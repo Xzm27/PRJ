@@ -6,7 +6,10 @@ from prettytable import PrettyTable
 
 db = "projects.db"
 
-def init_db():
+def init_db()-> None:
+    """
+    Initializes the database
+    """
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
     
@@ -22,37 +25,76 @@ def init_db():
     conn.commit()
     conn.close()
     
-def add_project(name, path, editor="nano"):
-    # Check if the path exists and is a directory
-    if not os.path.exists(path):
-        print(f"Error: Path '{path}' does not exist.")
-        return
-    if not os.path.isdir(path):
-        print(f"Error: Path '{path}' is not a directory.")
-        return
+def validate_path(path: str) -> str:
+    """
+    Validates or creates the given path.
 
+    Args:
+        path (str): The path to validate or create.
+
+    Returns:
+        str: Absolute, resolved path if valid or created.
+    """
+    abs_path = os.path.abspath(path)
+    resolved_path = os.path.realpath(abs_path)
+    
+    if not os.path.exists(resolved_path):
+        print(f"Path '{resolved_path}' does not exist. Creating it...")
+        os.makedirs(resolved_path)
+    elif not os.path.isdir(resolved_path):
+        print(f"Error: Path '{resolved_path}' is not a directory.")
+        return None
+
+    if not os.access(resolved_path, os.W_OK):
+        print(f"Error: Path '{resolved_path}' is not writable.")
+        return None
+
+    return resolved_path
+    
+def add_project(name: str, path: str, editor: str="nano", open_flag: bool=False)-> None:
+    """
+    Adds a project to the database
+    
+    Args:
+        name (str): Name of the project
+        path (str): Project path
+        editor (str): Preferred editor for the project (defualt: nano)
+        open_flag (bool): Flag to check if the project will be opened on adition
+    """
+    
+    resolved_path = validate_path(path)
+    
+    if not resolved_path:
+        return
+    
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
     
     # Check if the project already exists
-    cursor.execute("SELECT * FROM projects WHERE name = ? OR path = ?", (name, path))
+    cursor.execute("SELECT * FROM projects WHERE name = ? OR path = ?", (name, resolved_path))
     if cursor.fetchone():
-        print(f"Error: A project with the name '{name}' or path '{path}' already exists.")
+        print(f"Error: A project with the name '{name}' or path '{resolved_path}' already exists.")
         conn.close()
         return
 
     # Insert the new project with timestamp and editor
     cursor.execute(
         "INSERT INTO projects (name, path, editor) VALUES (?, ?, ?)",
-        (name, path, editor)
+        (name, resolved_path, editor)
     )
     conn.commit()
     conn.close()
-    print(f"Added project '{name}' at '{path}' with editor '{editor}'")
+    print(f"Added project '{name}' at '{resolved_path}' with editor '{editor}'")
     
-def open_project(name):
+    if open_flag:
+        open_project(name)
+    
+def open_project(name: str)-> None:
     """
     Opens a project
+    
+    Args:
+        name (str): name of the project to be opened
     """
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
@@ -73,7 +115,10 @@ def open_project(name):
     else:
         print(f"Error: No project found with the name '{name}'")
         
-def list_projects():
+def list_projects()-> None:
+    """
+    Lists all the project
+    """
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
     
@@ -92,6 +137,9 @@ def list_projects():
         print("no projects to show")
 
 def main():
+    """
+    Main function
+    """
     init_db()
     
     parser = argparse.ArgumentParser(prog="PRJ", description="CLI Tool to manage coding projects")
@@ -100,8 +148,9 @@ def main():
     # Add projects command
     add_parser = subparsers.add_parser("add", help="Add project")
     add_parser.add_argument("name", help="Project name")
-    add_parser.add_argument("path", help="Project path")
+    add_parser.add_argument("path", nargs="?", default=".", help="Project path (default: current directory)")    
     add_parser.add_argument("--editor", default="nano", help="Preferred editor (default: nano)")
+    add_parser.add_argument("-o", "--open", action="store_true", help="Open project after adding")
     
     # Open projects command
     open_parser = subparsers.add_parser("open", help="Open project")
@@ -113,7 +162,7 @@ def main():
     args = parser.parse_args()
     
     if(args.command == "add"):
-        add_project(args.name, args.path, args.editor)
+        add_project(args.name, args.path, args.editor, args.open)
     
     elif(args.command == "open"):
         open_project(args.name)
